@@ -166,6 +166,17 @@ app.get('/', (req, res) => {
     res.send(html);
 });
 
+// --- ĐOẠN CODE THÊM MỚI: API CHỌN RIÊNG BIỆT ĐỂ SCRIPT ROBLOX HOP CHUẨN XÁC ---
+app.get('/api/getjobs', (req, res) => {
+    const targetId = req.query.id; // Lấy tham số ?id= trên Link
+    if (!targetId || !serverData[targetId]) {
+        return res.type('text/plain').send(""); // Trả về chuỗi rỗng nếu không có dữ liệu
+    }
+    // Chỉ lấy đúng danh sách các JobId của mục đó, cách nhau bằng dấu xuống dòng
+    const jobList = serverData[targetId].map(s => s.job).join("\n");
+    res.type('text/plain').send(jobList);
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Hệ thống đang hoạt động ổn định trên cổng ${PORT}`);
