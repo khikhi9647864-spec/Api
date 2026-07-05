@@ -12,11 +12,30 @@ const placeIds = {
     3: 7449423635
 };
 
-// CƠ CHẾ TỰ ĐỘNG XÓA: Cứ mỗi 10 giây, hệ thống tự động quét và xóa bỏ các Link/JobId đã tồn tại quá 5 phút (300000 ms)
+// --- PHÂN LOẠI NHÓM THỜI GIAN XÓA LINK (đơn vị: phút) ---
+const time10m = [
+    "full_moon", "nearmoon", "daobian", "kitsune", "prehistoric", 
+    "rip", "doughv2", "doughv1", "nearcake", "mebeo", 
+    "reaper", "tyrant", "elite", "darkbeard", "captain"
+];
+const time8m = ["shizu", "oroshi", "saishi"];
+// Các mục còn lại (Trái ác quỷ...) sẽ mặc định là 4 phút
+
+// CƠ CHẾ TỰ ĐỘNG XÓA: Cứ mỗi 10 giây, hệ thống tự động quét và xóa bỏ các Link/JobId đã tồn tại quá thời gian quy định
 setInterval(() => {
     const now = Date.now();
     for (const eventName in serverData) {
-        serverData[eventName] = serverData[eventName].filter(s => (now - s.timestamp) < 5 * 60 * 1000);
+        let expireMinutes = 4; // Mặc định 4 phút cho Trái Ác Quỷ và sự kiện khác
+        
+        if (time10m.includes(eventName)) {
+            expireMinutes = 10;
+        } else if (time8m.includes(eventName)) {
+            expireMinutes = 8;
+        }
+        
+        const expireMs = expireMinutes * 60 * 1000; // Đổi ra mili-giây
+
+        serverData[eventName] = serverData[eventName].filter(s => (now - s.timestamp) < expireMs);
         if (serverData[eventName].length === 0) {
             delete serverData[eventName];
         }
@@ -46,7 +65,7 @@ app.post('/push', (req, res) => {
     // Kiểm tra chống trùng lặp JobId trong danh sách hiện tại
     const isExist = serverData[eventName].find(s => s.job === job);
     if (!isExist) {
-        // ĐÃ BỎ GIỚI HẠN SỨC CHỨA: Sức chứa vô tận, nhận liên tục dữ liệu mới và chỉ bị xóa đi khi hết hạn 5 phút
+        // ĐÃ BỎ GIỚI HẠN SỨC CHỨA: Sức chứa vô tận, nhận liên tục dữ liệu mới và chỉ bị xóa đi khi hết hạn
         serverData[eventName].push({
             job: job,
             players: players,
@@ -74,7 +93,7 @@ app.get('/', (req, res) => {
         { id: "mebeo", name: "10. Cake Queen" },
         { id: "reaper", name: "11. Soul Reaper" },
         { id: "tyrant", name: "12. Tyrant of the Skies" },
-        { id: "elite", name: "13. Quái Elite (Chung)" }, // Chỉ hiển thị duy nhất mục Elite tổng hợp này
+        { id: "elite", name: "13. Quái Elite (Chung)" }, 
         { id: "darkbeard", name: "14. Darkbeard (Râu Đen)" },
         { id: "captain", name: "15. Cursed Captain" },
         { id: "shizu", name: "16. Truyền Thuyết: Kiếm Shizu" },
@@ -105,6 +124,11 @@ app.get('/', (req, res) => {
         html += `<h3>${category.name}</h3>`;
         const servers = serverData[category.id];
         
+        // Tự động set số phút vào text hiển thị cho khớp với logic xóa
+        let expireText = 4;
+        if (time10m.includes(category.id)) expireText = 10;
+        else if (time8m.includes(category.id)) expireText = 8;
+
         if (servers && servers.length > 0) {
             servers.forEach(s => {
                 html += `<div class="item">
@@ -114,7 +138,8 @@ app.get('/', (req, res) => {
                 </div>`;
             });
         } else {
-            html += `<div class="empty">Trống (Hoặc đã hết hạn 5 phút)...</div>`;
+            // Đã đổi text để hiển thị đúng số phút
+            html += `<div class="empty">Trống (Hoặc đã hết hạn ${expireText} phút)...</div>`;
         }
     });
 
@@ -134,7 +159,7 @@ app.get('/', (req, res) => {
     }
     
     if (!hasOther) {
-        html += `<div class="empty">Chưa có dữ liệu trái ác quỷ nào xuất hiện...</div>`;
+        html += `<div class="empty">Chưa có dữ liệu (Hoặc đã hết hạn 4 phút)...</div>`;
     }
 
     html += `</body></html>`;
@@ -145,4 +170,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Hệ thống đang hoạt động ổn định trên cổng ${PORT}`);
 });
-         
+        
