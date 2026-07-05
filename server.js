@@ -12,6 +12,15 @@ const placeIds = {
     3: 7449423635
 };
 
+// Hệ thống quét và tự động xóa các link đã tồn tại quá 5 phút
+setInterval(() => {
+    const now = Date.now();
+    for (const event in serverData) {
+        // Chỉ giữ lại những server có thời gian tạo trong vòng 5 phút (300,000 ms)
+        serverData[event] = serverData[event].filter(s => now - s.timestamp < 300000);
+    }
+}, 60000); // Mỗi 1 phút sẽ chạy kiểm tra một lần
+
 app.post('/push', (req, res) => {
     const { job, sea, boss, players } = req.body;
     
@@ -29,13 +38,13 @@ app.post('/push', (req, res) => {
 
     const isExist = serverData[eventName].find(s => s.job === job);
     if (!isExist) {
-        if (serverData[eventName].length > 20) serverData[eventName].shift();
-        
+        // Đã gỡ bỏ giới hạn 20 server, sức chứa hiện tại là vô tận
         serverData[eventName].push({
             job: job,
             players: players,
             link: joinLink,
-            time: new Date().toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
+            time: new Date().toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }),
+            timestamp: Date.now() // Đánh dấu mốc thời gian để xóa sau 5 phút
         });
     }
 
@@ -43,7 +52,7 @@ app.post('/push', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-    // Đã liệt kê full 100% các ID từ script Lua
+    // Đã tinh chỉnh lại danh sách, gộp Elite
     const order = [
         // --- THIÊN NHIÊN & ĐẢO ---
         { id: "full_moon", name: "1. Full Moon (Trăng Rằm)" },
@@ -62,33 +71,35 @@ app.get('/', (req, res) => {
         { id: "tyrant", name: "12. Tyrant of the Skies" },
         
         // --- ELITE SEA 3 ---
-        { id: "elite", name: "13. Quái Elite (Chung)" },
-        { id: "diablo", name: "14. Elite: Diablo" },
-        { id: "deandre", name: "15. Elite: Deandre" },
-        { id: "urban", name: "16. Elite: Urban" },
+        { id: "elite", name: "13. Quái Elite (Chung)" }, // Gộp chung Diablo, Deandre, Urban
         
         // --- BOSS & SỰ KIỆN SEA 2 ---
-        { id: "darkbeard", name: "17. Darkbeard (Râu Đen)" },
-        { id: "captain", name: "18. Cursed Captain" },
+        { id: "darkbeard", name: "14. Darkbeard (Râu Đen)" },
+        { id: "captain", name: "15. Cursed Captain" },
         
         // --- VŨ KHÍ ---
-        { id: "shizu", name: "19. Truyền Thuyết: Kiếm Shizu" },
-        { id: "oroshi", name: "20. Truyền Thuyết: Kiếm Oroshi" },
-        { id: "saishi", name: "21. Truyền Thuyết: Kiếm Saishi" }
+        { id: "shizu", name: "16. Truyền Thuyết: Kiếm Shizu" },
+        { id: "oroshi", name: "17. Truyền Thuyết: Kiếm Oroshi" },
+        { id: "saishi", name: "18. Truyền Thuyết: Kiếm Saishi" }
     ];
 
-    let html = `<html lang="vi"><head><meta charset="UTF-8"><title>Danh sách Server KAITER</title>
+    // Giao diện đã được chuyển sang màu trắng tối giản
+    let html = `<html lang="vi"><head><meta charset="UTF-8">
+                <title>Danh sách Server KAITER X HUD</title>
+                <meta http-equiv="refresh" content="5">
                 <style>
-                    body { font-family: monospace; background: #121212; color: #fff; padding: 20px; }
-                    h2 { color: #ffffff; border-bottom: 2px solid #555; padding-bottom: 10px; text-transform: uppercase; }
-                    h3 { color: #00ffcc; border-bottom: 1px solid #333; padding-bottom: 5px; margin-top: 25px; text-transform: uppercase; font-size: 14px; }
-                    .item { margin-bottom: 8px; padding: 8px; background: #1e1e1e; border-left: 3px solid #ff5555; }
-                    a { color: #ff5555; text-decoration: none; font-weight: bold; }
-                    a:hover { text-decoration: underline; color: #ffffff; }
-                    .empty { color: #666; font-style: italic; }
+                    body { font-family: monospace; background: #ffffff; color: #000000; padding: 20px; margin: 0; }
+                    h2 { color: #000000; border-bottom: 2px solid #000; padding-bottom: 10px; text-transform: uppercase; }
+                    h3 { color: #0055ff; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 25px; text-transform: uppercase; font-size: 14px; }
+                    .header-info { font-size: 15px; font-weight: bold; padding: 10px; background: #f0f0f0; border-left: 4px solid #000; margin-bottom: 20px; }
+                    .item { margin-bottom: 8px; padding: 10px; background: #f9f9f9; border-left: 3px solid #0055ff; border-radius: 2px; }
+                    a { color: #0055ff; text-decoration: none; font-weight: bold; }
+                    a:hover { text-decoration: underline; color: #ff0000; }
+                    .empty { color: #888; font-style: italic; }
                 </style></head><body>`;
     
     html += `<h2>HỆ THỐNG QUÉT SERVER</h2>`;
+    html += `<div class="header-info">Người chạy web: TRAN DUY KHANH | Trạng thái: Đang hoạt động 24/7 (Cập nhật tự động)</div>`;
 
     order.forEach(category => {
         html += `<h3>${category.name}</h3>`;
@@ -97,7 +108,7 @@ app.get('/', (req, res) => {
         if (servers && servers.length > 0) {
             servers.forEach(s => {
                 html += `<div class="item">
-                    [${s.time}] Người chơi: ${s.players}/12 | 
+                    [${s.time}] Người chơi: <b>${s.players}/12</b> | 
                     <a href="${s.link}">JOIN SERVER</a> 
                     <br>JobId: <i>${s.job}</i>
                 </div>`;
@@ -107,8 +118,8 @@ app.get('/', (req, res) => {
         }
     });
 
-    // Phần này sẽ tự động bắt tất cả các loại Trái Ác Quỷ (Fruits) rơi ra trên map
-    html += `<h3>22. TRÁI ÁC QUỶ & SỰ KIỆN KHÁC</h3>`;
+    // Phần bắt tất cả các loại Trái Ác Quỷ (Fruits) và các Event khác
+    html += `<h3>19. TRÁI ÁC QUỶ & SỰ KIỆN KHÁC</h3>`;
     let hasOther = false;
     for (const [key, value] of Object.entries(serverData)) {
         if (!order.find(o => o.id === key) && value.length > 0) {
@@ -116,7 +127,8 @@ app.get('/', (req, res) => {
             html += `<b>- [${key.toUpperCase()}]</b><br>`;
             value.forEach(s => {
                 html += `<div class="item">
-                    [${s.time}] Người chơi: ${s.players}/12 | <a href="${s.link}">JOIN SERVER</a>
+                    [${s.time}] Người chơi: <b>${s.players}/12</b> | <a href="${s.link}">JOIN SERVER</a>
+                    <br>JobId: <i>${s.job}</i>
                 </div>`;
             });
         }
@@ -132,6 +144,5 @@ app.get('/', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Web đang chạy tại cổng ${PORT}`);
+    console.log(\`Web đang chạy tại cổng \${PORT}\`);
 });
-                   
