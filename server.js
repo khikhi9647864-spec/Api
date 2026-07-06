@@ -19,22 +19,16 @@ const time10m = [
     "reaper", "tyrant", "elite", "darkbeard", "captain"
 ];
 const time8m = ["shizu", "oroshi", "saishi"];
-// Các mục còn lại (Trái ác quỷ...) sẽ mặc định là 4 phút
 
-// CƠ CHẾ TỰ ĐỘNG XÓA: Cứ mỗi 10 giây, hệ thống tự động quét và xóa bỏ các Link/JobId đã tồn tại quá thời gian quy định
+// CƠ CHẾ TỰ ĐỘNG XÓA: Quét mỗi 10 giây để xóa Link/JobId hết hạn
 setInterval(() => {
     const now = Date.now();
     for (const eventName in serverData) {
-        let expireMinutes = 4; // Mặc định 4 phút cho Trái Ác Quỷ và sự kiện khác
+        let expireMinutes = 4;
+        if (time10m.includes(eventName)) expireMinutes = 10;
+        else if (time8m.includes(eventName)) expireMinutes = 8;
         
-        if (time10m.includes(eventName)) {
-            expireMinutes = 10;
-        } else if (time8m.includes(eventName)) {
-            expireMinutes = 8;
-        }
-        
-        const expireMs = expireMinutes * 60 * 1000; // Đổi ra mili-giây
-
+        const expireMs = expireMinutes * 60 * 1000;
         serverData[eventName] = serverData[eventName].filter(s => (now - s.timestamp) < expireMs);
         if (serverData[eventName].length === 0) {
             delete serverData[eventName];
@@ -42,6 +36,9 @@ setInterval(() => {
     }
 }, 10000);
 
+// =========================================================================
+// CỔNG NHẬN DỮ LIỆU TỪ SCRIPT LUA ROBLOX (GIỮ NGUYÊN 100%)
+// =========================================================================
 app.post('/push', (req, res) => {
     const { job, sea, boss, players } = req.body;
     
@@ -52,7 +49,7 @@ app.post('/push', (req, res) => {
     const placeId = placeIds[sea] || 2753915549; 
     const joinLink = `roblox://experiences/start?placeId=${placeId}&gameInstanceId=${job}`;
     
-    // GỘP ELITE: Nếu tên boss gửi về là diablo, deandre hoặc urban thì tự động gộp chung vào nhóm "elite"
+    // Gộp nhóm Elite
     let eventName = boss.toLowerCase();
     if (eventName === "diablo" || eventName === "deandre" || eventName === "urban") {
         eventName = "elite";
@@ -62,24 +59,46 @@ app.post('/push', (req, res) => {
         serverData[eventName] = [];
     }
 
-    // Kiểm tra chống trùng lặp JobId trong danh sách hiện tại
+    // Kiểm tra chống trùng lặp JobId
     const isExist = serverData[eventName].find(s => s.job === job);
     if (!isExist) {
-        // ĐÃ BỎ GIỚI HẠN SỨC CHỨA: Sức chứa vô tận, nhận liên tục dữ liệu mới và chỉ bị xóa đi khi hết hạn
+        // 1. Lưu dữ liệu từ script Lua gửi về vào hệ thống
         serverData[eventName].push({
             job: job,
             players: players,
             link: joinLink,
-            timestamp: Date.now(), // Lưu mốc thời gian nhận để tính thời gian xóa
+            timestamp: Date.now(),
             time: new Date().toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
         });
+
+        // =========================================================================
+        // 2. TỰ ĐỘNG BẮN NGAY LẬP TỨC SANG WEB APIFULLMOON-1
+        // (Khi có JobId mới ở cột full_moon hoặc các cột khác, tự động forward ngay)
+        // =========================================================================
+        const targetUrl = 'https://apifullmoon-1.onrender.com/push';
+        
+        // Kiểm tra để tránh web tự bắn vào chính nó nếu code này đang chạy trực tiếp trên apifullmoon-1
+        const currentHost = req.headers['x-forwarded-host'] || req.headers['host'] || '';
+        if (!currentHost.includes('apifullmoon-1.onrender.com')) {
+            if (typeof fetch === "function") {
+                // Bắn nguyên gói dữ liệu (job, sea, boss, players) sang web kia ngay lập tức
+                fetch(targetUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ job, sea, boss, players })
+                }).catch(err => {
+                    console.log(`[Lỗi khi tự động bắn sang ${targetUrl}]:`, err.message);
+                });
+            }
+        }
     }
 
+    // Trả lời về cho script Lua là đã nhận thành công
     res.status(200).send("Thành công");
 });
 
+// Giao diện Web hiển thị
 app.get('/', (req, res) => {
-    // Danh sách hiển thị rút gọn tối giản (Đã gộp 3 quái lẻ thành 1 mục Elite duy nhất)
     const order = [
         { id: "full_moon", name: "1. Full Moon (Trăng Rằm)" },
         { id: "nearmoon", name: "2. Near Moon (Sắp Trăng Rằm)" },
@@ -101,7 +120,6 @@ app.get('/', (req, res) => {
         { id: "saishi", name: "18. Truyền Thuyết: Kiếm Saishi" }
     ];
 
-    // GIAO DIỆN TRẮNG: Đã đổi toàn bộ nền sang màu trắng, chữ tối màu rõ ràng và thêm thẻ tự động tải lại trang sau 5 giây
     let html = `<html lang="vi"><head>
                 <meta charset="UTF-8">
                 <meta http-equiv="refresh" content="5">
@@ -111,7 +129,7 @@ app.get('/', (req, res) => {
                     h2 { color: #000000; border-bottom: 2px solid #222222; padding-bottom: 10px; text-transform: uppercase; margin-bottom: 5px; }
                     .author { font-weight: bold; color: #555555; margin-bottom: 25px; font-size: 13px; text-transform: uppercase; }
                     h3 { color: #0056b3; border-bottom: 1px solid #e0e0e0; padding-bottom: 5px; margin-top: 25px; text-transform: uppercase; font-size: 14px; }
-                    .item { margin-bottom: 8px; padding: 10px; background: #f8f9fa; border-left: 4px solid #d9534f; border-top: 1px solid #e9ecef; border-right: 1px solid #e9ecef; border-bottom: 1px solid #e9ecef; }
+                    .item { margin-bottom: 8px; padding: 10px; background: #f8f9fa; border: 1px solid #e9ecef; border-left: 4px solid #d9534f; }
                     a { color: #d9534f; text-decoration: none; font-weight: bold; }
                     a:hover { text-decoration: underline; color: #000000; }
                     .empty { color: #999999; font-style: italic; font-size: 13px; }
@@ -124,7 +142,6 @@ app.get('/', (req, res) => {
         html += `<h3>${category.name}</h3>`;
         const servers = serverData[category.id];
         
-        // Tự động set số phút vào text hiển thị cho khớp với logic xóa
         let expireText = 4;
         if (time10m.includes(category.id)) expireText = 10;
         else if (time8m.includes(category.id)) expireText = 8;
@@ -138,12 +155,10 @@ app.get('/', (req, res) => {
                 </div>`;
             });
         } else {
-            // Đã đổi text để hiển thị đúng số phút
             html += `<div class="empty">Trống (Hoặc đã hết hạn ${expireText} phút)...</div>`;
         }
     });
 
-    // Tự động bắt thêm các mục Trái Ác Quỷ rơi tự do ngoài danh sách ưu tiên
     html += `<h3>19. TRÁI ÁC QUỶ & SỰ KIỆN KHÁC</h3>`;
     let hasOther = false;
     for (const [key, value] of Object.entries(serverData)) {
@@ -166,19 +181,28 @@ app.get('/', (req, res) => {
     res.send(html);
 });
 
-// --- ĐOẠN CODE THÊM MỚI: API CHỌN RIÊNG BIỆT ĐỂ SCRIPT ROBLOX HOP CHUẨN XÁC ---
+// API hỗ trợ lấy nhanh JobID cho Script
 app.get('/api/getjobs', (req, res) => {
-    const targetId = req.query.id; // Lấy tham số ?id= trên Link
+    const targetId = req.query.id; 
     if (!targetId || !serverData[targetId]) {
-        return res.type('text/plain').send(""); // Trả về chuỗi rỗng nếu không có dữ liệu
+        return res.type('text/plain').send(""); 
     }
-    // Chỉ lấy đúng danh sách các JobId của mục đó, cách nhau bằng dấu xuống dòng
     const jobList = serverData[targetId].map(s => s.job).join("\n");
     res.type('text/plain').send(jobList);
+});
+
+// API hỗ trợ lấy ngay Link Join mới nhất cho Script
+app.get('/api/getlink', (req, res) => {
+    const targetId = req.query.id;
+    if (!targetId || !serverData[targetId] || serverData[targetId].length === 0) {
+        return res.type('text/plain').send("");
+    }
+    const latestServer = serverData[targetId][serverData[targetId].length - 1];
+    res.type('text/plain').send(latestServer.link);
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Hệ thống đang hoạt động ổn định trên cổng ${PORT}`);
 });
-        
+            
